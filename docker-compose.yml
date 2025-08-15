@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: mini-vutto-postgres
+    environment:
+      POSTGRES_DB: mini_vutto
+      POSTGRES_USER: mini_vutto
+      POSTGRES_PASSWORD: minivutto
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    restart: unless-stopped
+    networks:
+      - mini-vutto-network
+  adminer:
+    image: adminer:latest
+    container_name: mini-vutto-adminer
+    ports:
+      - "8080:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - mini-vutto-network
+
+volumes:
+  postgres_data:
+
+networks:
+  mini-vutto-network:
+    driver: bridge
