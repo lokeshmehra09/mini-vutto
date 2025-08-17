@@ -8,11 +8,16 @@ const router = express.Router();
 // Register new user with OTP verification
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, otp, role } = req.body;
+    const { email, password, otp, role, first_name, last_name } = req.body;
     
     // Validate input
     if (!email || !password) {
       return res.status(400).json({ message: 'Email and password are required' });
+    }
+    
+    // Validate last_name is required
+    if (!last_name) {
+      return res.status(400).json({ message: 'last_name is required' });
     }
     
     if (password.length < 6) {
@@ -80,8 +85,8 @@ router.post('/register', async (req, res) => {
     
     // Create user
     const result = await req.app.locals.db.query(
-      'INSERT INTO users (email, password_hash, role, is_verified) VALUES ($1, $2, $3, $4) RETURNING id, email, role, created_at',
-      [email, passwordHash, userRole, true]
+      'INSERT INTO users (email, password_hash, role, is_verified, first_name, last_name) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, email, first_name, last_name, role, created_at',
+      [email, passwordHash, userRole, true, first_name, last_name]
     );
     
     const user = result.rows[0];
@@ -98,6 +103,8 @@ router.post('/register', async (req, res) => {
       user: {
         id: user.id,
         email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
         role: user.role,
         created_at: user.created_at
       },
@@ -174,7 +181,7 @@ router.post('/login', async (req, res) => {
 router.get('/users', authenticateToken, async (req, res) => {
   try {
     const result = await req.app.locals.db.query(
-      'SELECT id, email, role, is_verified, created_at FROM users ORDER BY created_at DESC'
+      'SELECT id, email, first_name, last_name, role, is_verified, created_at FROM users ORDER BY created_at DESC'
     );
     
     res.json({
@@ -195,7 +202,7 @@ router.get('/users/:id', authenticateToken, async (req, res) => {
     const { id } = req.params;
     
     const result = await req.app.locals.db.query(
-      'SELECT id, email, role, is_verified, created_at FROM users WHERE id = $1',
+      'SELECT id, email, first_name, last_name, role, is_verified, created_at FROM users WHERE id = $1',
       [id]
     );
     
@@ -286,6 +293,74 @@ router.patch('/users/:id/verify', async (req, res) => {
     
   } catch (error) {
     console.error('Update user verification error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update user information (first_name, last_name)
+router.put('/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { first_name, last_name } = req.body;
+    
+    // Validate input - last_name is required
+    if (!last_name) {
+      return res.status(400).json({ 
+        message: 'last_name is required' 
+      });
+    }
+    
+    // Check if user exists
+    const userCheck = await req.app.locals.db.query(
+      'SELECT id, email, role, first_name, last_name FROM users WHERE id = $1',
+      [id]
+    );
+    
+    if (userCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    const currentUser = userCheck.rows[0];
+    
+    // Prepare update query dynamically based on provided fields
+    let updateQuery = 'UPDATE users SET ';
+    let queryParams = [];
+    let paramCount = 1;
+    
+    if (first_name !== undefined) {
+      updateQuery += `first_name = $${paramCount}`;
+      queryParams.push(first_name);
+      paramCount++;
+    }
+    
+    if (last_name !== undefined) {
+      if (first_name !== undefined) {
+        updateQuery += ', ';
+      }
+      updateQuery += `last_name = $${paramCount}`;
+      queryParams.push(last_name);
+      paramCount++;
+    }
+    
+    updateQuery += ` WHERE id = $${paramCount}`;
+    queryParams.push(id);
+    
+    // Execute update
+    await req.app.locals.db.query(updateQuery, queryParams);
+    
+    // Get updated user data
+    const updatedUser = await req.app.locals.db.query(
+      'SELECT id, email, role, first_name, last_name, is_verified, created_at FROM users WHERE id = $1',
+      [id]
+    );
+    
+    res.json({
+      message: 'User updated successfully',
+      user: updatedUser.rows[0]
+    });
+    
+  } catch (error) {
+    console.error('Update user error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
